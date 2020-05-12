@@ -1,11 +1,12 @@
 import sys
+
 thismodule = sys.modules[__name__]
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from lib.loss import temporal_pairwise_cosine_similarity
-from lib.operation import rotate_and_maybe_project
+from transmomo.lib.loss import temporal_pairwise_cosine_similarity
+from transmomo.lib.operation import rotate_and_maybe_project
 
 torch.manual_seed(123)
 
@@ -16,14 +17,21 @@ def get_autoencoder(config):
 
 
 class ConvEncoder(nn.Module):
-
     @classmethod
     def build_from_config(cls, config):
         conv_pool = None if config.conv_pool is None else getattr(nn, config.conv_pool)
-        encoder = cls(config.channels, config.padding, config.kernel_size, config.conv_stride, conv_pool)
+        encoder = cls(
+            config.channels,
+            config.padding,
+            config.kernel_size,
+            config.conv_stride,
+            conv_pool,
+        )
         return encoder
 
-    def __init__(self, channels, padding=3, kernel_size=8, conv_stride=2, conv_pool=None):
+    def __init__(
+        self, channels, padding=3, kernel_size=8, conv_stride=2, conv_pool=None
+    ):
         super(ConvEncoder, self).__init__()
 
         self.in_channels = channels[0]
@@ -36,24 +44,37 @@ class ConvEncoder(nn.Module):
         for i in range(nr_layer):
             if conv_pool is None:
                 model.append(nn.ReflectionPad1d(padding))
-                model.append(nn.Conv1d(channels[i], channels[i+1], kernel_size=kernel_size, stride=conv_stride))
+                model.append(
+                    nn.Conv1d(
+                        channels[i],
+                        channels[i + 1],
+                        kernel_size=kernel_size,
+                        stride=conv_stride,
+                    )
+                )
                 model.append(acti)
             else:
                 model.append(nn.ReflectionPad1d(padding))
-                model.append(nn.Conv1d(channels[i], channels[i+1], kernel_size=kernel_size, stride=conv_stride))
+                model.append(
+                    nn.Conv1d(
+                        channels[i],
+                        channels[i + 1],
+                        kernel_size=kernel_size,
+                        stride=conv_stride,
+                    )
+                )
                 model.append(acti)
                 model.append(conv_pool(kernel_size=2, stride=2))
 
         self.model = nn.Sequential(*model)
 
     def forward(self, x):
-        x = x[:, :self.in_channels, :]
+        x = x[:, : self.in_channels, :]
         x = self.model(x)
         return x
 
 
 class ConvDecoder(nn.Module):
-
     @classmethod
     def build_from_config(cls, config):
         decoder = cls(config.channels, config.kernel_size)
@@ -67,15 +88,18 @@ class ConvDecoder(nn.Module):
         acti = nn.LeakyReLU(0.2)
 
         for i in range(len(channels) - 1):
-            model.append(nn.Upsample(scale_factor=2, mode='nearest'))
+            model.append(nn.Upsample(scale_factor=2, mode="nearest"))
             model.append(nn.ReflectionPad1d(pad))
-            model.append(nn.Conv1d(channels[i], channels[i + 1],
-                                            kernel_size=kernel_size, stride=1))
+            model.append(
+                nn.Conv1d(
+                    channels[i], channels[i + 1], kernel_size=kernel_size, stride=1
+                )
+            )
             if i == 0 or i == 1:
                 model.append(nn.Dropout(p=0.2))
             if not i == len(channels) - 2:
-                model.append(acti)          # whether to add tanh a last?
-                #model.append(nn.Dropout(p=0.2))
+                model.append(acti)  # whether to add tanh a last?
+                # model.append(nn.Dropout(p=0.2))
 
         self.model = nn.Sequential(*model)
 
@@ -84,7 +108,6 @@ class ConvDecoder(nn.Module):
 
 
 class Discriminator(nn.Module):
-
     def __init__(self, config):
         super(Discriminator, self).__init__()
         self.gan_type = config.gan_type
@@ -103,13 +126,17 @@ class Discriminator(nn.Module):
         fake_logits = self.forward(x_gen)
         real_logits = self.forward(x_real)
 
-        if self.gan_type == 'lsgan':
-            loss = torch.mean((fake_logits - 0) ** 2) + torch.mean((real_logits - 1) ** 2)
-        elif self.gan_type == 'nsgan':
+        if self.gan_type == "lsgan":
+            loss = torch.mean((fake_logits - 0) ** 2) + torch.mean(
+                (real_logits - 1) ** 2
+            )
+        elif self.gan_type == "nsgan":
             all0 = torch.zeros_like(fake_logits, requires_grad=False)
             all1 = torch.ones_like(real_logits, requires_grad=False)
-            loss = torch.mean(F.binary_cross_entropy(F.sigmoid(fake_logits), all0) +
-                              F.binary_cross_entropy(F.sigmoid(real_logits), all1))
+            loss = torch.mean(
+                F.binary_cross_entropy(F.sigmoid(fake_logits), all0)
+                + F.binary_cross_entropy(F.sigmoid(real_logits), all1)
+            )
         else:
             raise NotImplementedError
 
@@ -118,9 +145,9 @@ class Discriminator(nn.Module):
     def calc_gen_loss(self, x_gen):
 
         logits = self.forward(x_gen)
-        if self.gan_type == 'lsgan':
+        if self.gan_type == "lsgan":
             loss = torch.mean((logits - 1) ** 2)
-        elif self.gan_type == 'nsgan':
+        elif self.gan_type == "nsgan":
             all1 = torch.ones_like(logits, requires_grad=False)
             loss = torch.mean(F.binary_cross_entropy(F.sigmoid(logits), all1))
         else:
@@ -130,12 +157,15 @@ class Discriminator(nn.Module):
 
 
 class Autoencoder3f(nn.Module):
-
     def __init__(self, config):
         super(Autoencoder3f, self).__init__()
 
-        assert config.motion_encoder.channels[-1] + config.body_encoder.channels[-1] + \
-               config.view_encoder.channels[-1] == config.decoder.channels[0]
+        assert (
+            config.motion_encoder.channels[-1]
+            + config.body_encoder.channels[-1]
+            + config.view_encoder.channels[-1]
+            == config.decoder.channels[0]
+        )
 
         self.n_joints = config.decoder.channels[-1] // 3
         self.body_reference = config.body_reference
@@ -149,8 +179,16 @@ class Autoencoder3f(nn.Module):
         self.view_encoder = view_cls.build_from_config(config.view_encoder)
         self.decoder = ConvDecoder.build_from_config(config.decoder)
 
-        self.body_pool = getattr(F, config.body_encoder.global_pool) if config.body_encoder.global_pool is not None else None
-        self.view_pool = getattr(F, config.view_encoder.global_pool) if config.view_encoder.global_pool is not None else None
+        self.body_pool = (
+            getattr(F, config.body_encoder.global_pool)
+            if config.body_encoder.global_pool is not None
+            else None
+        )
+        self.view_pool = (
+            getattr(F, config.view_encoder.global_pool)
+            if config.view_encoder.global_pool is not None
+            else None
+        )
 
     def forward(self, seqs):
         return self.reconstruct(seqs)
@@ -162,13 +200,21 @@ class Autoencoder3f(nn.Module):
     def encode_body(self, seqs):
         body_code_seq = self.body_encoder(seqs)
         kernel_size = body_code_seq.size(-1)
-        body_code = self.body_pool(body_code_seq, kernel_size)  if self.body_pool is not None else body_code_seq
+        body_code = (
+            self.body_pool(body_code_seq, kernel_size)
+            if self.body_pool is not None
+            else body_code_seq
+        )
         return body_code, body_code_seq
 
     def encode_view(self, seqs):
         view_code_seq = self.view_encoder(seqs)
         kernel_size = view_code_seq.size(-1)
-        view_code = self.view_pool(view_code_seq, kernel_size)  if self.view_pool is not None else view_code_seq
+        view_code = (
+            self.view_pool(view_code_seq, kernel_size)
+            if self.view_pool is not None
+            else view_code_seq
+        )
         return view_code, view_code_seq
 
     def decode(self, motion_code, body_code, view_code):
@@ -192,7 +238,9 @@ class Autoencoder3f(nn.Module):
         body_b, _ = self.encode_body(x_b)
         view_c, _ = self.encode_view(x_c)
         out = self.decode(motion_a, body_b, view_c)
-        out = rotate_and_maybe_project(out, body_reference=self.body_reference, project_2d=True)
+        out = rotate_and_maybe_project(
+            out, body_reference=self.body_reference, project_2d=True
+        )
         return out
 
     def reconstruct3d(self, x):
@@ -207,12 +255,14 @@ class Autoencoder3f(nn.Module):
         body_code, _ = self.encode_body(x)
         view_code, _ = self.encode_view(x)
         out = self.decode(motion_code, body_code, view_code)
-        out = rotate_and_maybe_project(out, body_reference=self.body_reference, project_2d=True)
+        out = rotate_and_maybe_project(
+            out, body_reference=self.body_reference, project_2d=True
+        )
         return out
 
     def interpolate(self, x_a, x_b, N):
 
-        step_size = 1. / (N-1)
+        step_size = 1.0 / (N - 1)
         batch_size, _, seq_len = x_a.size()
 
         motion_a = self.encode_motion(x_a)
@@ -229,13 +279,13 @@ class Autoencoder3f(nn.Module):
             motion_weight = i * step_size
             for j in range(N):
                 body_weight = j * step_size
-                motion = (1. - motion_weight) * motion_a + motion_weight * motion_b
-                body = (1. - body_weight) * body_a + body_weight * body_b
-                view = (1. - body_weight) * view_a + body_weight * view_b
+                motion = (1.0 - motion_weight) * motion_a + motion_weight * motion_b
+                body = (1.0 - body_weight) * body_a + body_weight * body_b
+                view = (1.0 - body_weight) * view_a + body_weight * view_b
                 out = self.decode(motion, body, view)
-                out = rotate_and_maybe_project(out, body_reference=self.body_reference, project_2d=True)
+                out = rotate_and_maybe_project(
+                    out, body_reference=self.body_reference, project_2d=True
+                )
                 batch_out[:, i, j, :, :] = out
 
         return batch_out
-
-

@@ -1,7 +1,16 @@
 import sys, os
+
 thismodule = sys.modules[__name__]
 
-from lib.util.motion import preprocess_mixamo, rotate_motion_3d, limb_scale_motion_2d, normalize_motion, get_change_of_basis, localize_motion, scale_limbs
+from transmomo.lib.util.motion import (
+    preprocess_mixamo,
+    rotate_motion_3d,
+    limb_scale_motion_2d,
+    normalize_motion,
+    get_change_of_basis,
+    localize_motion,
+    scale_limbs,
+)
 
 import torch
 import glob
@@ -11,21 +20,27 @@ from torch.utils.data import Dataset, DataLoader
 from easydict import EasyDict as edict
 from tqdm import tqdm
 
-view_angles = np.array([ i * np.pi / 6 for i in range(-3, 4)])
+view_angles = np.array([i * np.pi / 6 for i in range(-3, 4)])
+
 
 def get_dataloader(phase, config):
 
     config.data.batch_size = config.batch_size
     config.data.seq_len = config.seq_len
-    dataset_cls_name = config.data.train_cls if phase == 'train' else config.data.eval_cls
+    dataset_cls_name = (
+        config.data.train_cls if phase == "train" else config.data.eval_cls
+    )
     dataset_cls = getattr(thismodule, dataset_cls_name)
     dataset = dataset_cls(phase, config.data)
 
-    dataloader = DataLoader(dataset, shuffle=(phase=='train'),
-                            batch_size=config.batch_size,
-                            num_workers=(config.data.num_workers if phase == 'train' else 1),
-                            worker_init_fn=lambda _: np.random.seed(),
-                            drop_last=True)
+    dataloader = DataLoader(
+        dataset,
+        shuffle=(phase == "train"),
+        batch_size=config.batch_size,
+        num_workers=(config.data.num_workers if phase == "train" else 1),
+        worker_init_fn=lambda _: np.random.seed(),
+        drop_last=True,
+    )
 
     return dataloader
 
@@ -34,21 +49,29 @@ class _MixamoDatasetBase(Dataset):
     def __init__(self, phase, config):
         super(_MixamoDatasetBase, self).__init__()
 
-        assert phase in ['train', 'test']
+        assert phase in ["train", "test"]
         self.phase = phase
-        self.data_root = config.train_dir if phase=='train' else config.test_dir
-        self.meanpose_path = config.train_meanpose_path if phase=='train' else config.test_meanpose_path
-        self.stdpose_path = config.train_stdpose_path if phase=='train' else config.test_stdpose_path
+        self.data_root = config.train_dir if phase == "train" else config.test_dir
+        self.meanpose_path = (
+            config.train_meanpose_path
+            if phase == "train"
+            else config.test_meanpose_path
+        )
+        self.stdpose_path = (
+            config.train_stdpose_path if phase == "train" else config.test_stdpose_path
+        )
         self.unit = config.unit
-        self.aug = (phase == 'train')
+        self.aug = phase == "train"
         self.character_names = sorted(os.listdir(self.data_root))
 
-        items = glob.glob(os.path.join(self.data_root, self.character_names[0], '*/motions/*.npy'))
-        self.motion_names = ['/'.join(x.split('/')[-3:]) for x in items]
+        items = glob.glob(
+            os.path.join(self.data_root, self.character_names[0], "*/motions/*.npy")
+        )
+        self.motion_names = ["/".join(x.split("/")[-3:]) for x in items]
 
         self.meanpose, self.stdpose = get_meanpose(phase, config)
 
-        if 'preload' in config and config.preload:
+        if "preload" in config and config.preload:
             self.preload()
             self.cached = True
         else:
@@ -83,10 +106,15 @@ class _MixamoDatasetBase(Dataset):
     @staticmethod
     def gen_aug_params(rotate=False):
         if rotate:
-            params = {'ratio': np.random.uniform(0.8, 1.2),
-                    'roll': np.random.uniform((-np.pi / 9, -np.pi / 9, -np.pi / 6), (np.pi / 9, np.pi / 9, np.pi / 6))}
+            params = {
+                "ratio": np.random.uniform(0.8, 1.2),
+                "roll": np.random.uniform(
+                    (-np.pi / 9, -np.pi / 9, -np.pi / 6),
+                    (np.pi / 9, np.pi / 9, np.pi / 6),
+                ),
+            }
         else:
-            params = {'ratio': np.random.uniform(0.5, 1.5)}
+            params = {"ratio": np.random.uniform(0.5, 1.5)}
         return edict(params)
 
     @staticmethod
@@ -99,28 +127,16 @@ class _MixamoDatasetBase(Dataset):
             return data, params
 
         # rotate
-        if 'roll' in params.keys():
+        if "roll" in params.keys():
             cx, cy, cz = np.cos(params.roll)
             sx, sy, sz = np.sin(params.roll)
-            mat33_x = np.array([
-                [1, 0, 0],
-                [0, cx, -sx],
-                [0, sx, cx]
-            ], dtype='float')
-            mat33_y = np.array([
-                [cy, 0, sy],
-                [0, 1, 0],
-                [-sy, 0, cy]
-            ], dtype='float')
-            mat33_z = np.array([
-                [cz, -sz, 0],
-                [sz, cz, 0],
-                [0, 0, 1]
-            ], dtype='float')
+            mat33_x = np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]], dtype="float")
+            mat33_y = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]], dtype="float")
+            mat33_z = np.array([[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]], dtype="float")
             data = mat33_x @ mat33_y @ mat33_z @ data
 
         # scale
-        if 'ratio' in params.keys():
+        if "ratio" in params.keys():
             data = data * params.ratio
 
         return data, params
@@ -133,8 +149,12 @@ class _MixamoDatasetBase(Dataset):
 
 
 def get_meanpose(phase, config):
-    meanpose_path = config.train_meanpose_path if phase == "train" else config.test_meanpose_path
-    stdpose_path = config.train_stdpose_path if phase == "train" else config.test_stdpose_path
+    meanpose_path = (
+        config.train_meanpose_path if phase == "train" else config.test_meanpose_path
+    )
+    stdpose_path = (
+        config.train_stdpose_path if phase == "train" else config.test_stdpose_path
+    )
     if os.path.exists(meanpose_path) and os.path.exists(stdpose_path):
         meanpose = np.load(meanpose_path)
         stdpose = np.load(stdpose_path)
@@ -150,7 +170,7 @@ def get_meanpose(phase, config):
 def gen_meanpose(phase, config, n_samp=20000):
 
     data_dir = config.train_dir if phase == "train" else config.test_dir
-    all_paths = glob.glob(os.path.join(data_dir, '*/*/motions/*.npy'))
+    all_paths = glob.glob(os.path.join(data_dir, "*/*/motions/*.npy"))
     random.shuffle(all_paths)
     all_paths = all_paths[:n_samp]
     all_joints = []
@@ -166,7 +186,9 @@ def gen_meanpose(phase, config, n_samp=20000):
                 z_angles = view_angles if config.rotation_axes[1] else np.array([0])
                 y_angles = view_angles if config.rotation_axes[2] else np.array([0])
                 x_angles, z_angles, y_angles = np.meshgrid(x_angles, z_angles, y_angles)
-                angles = np.stack([x_angles.flatten(), z_angles.flatten(), y_angles.flatten()], axis=1)
+                angles = np.stack(
+                    [x_angles.flatten(), z_angles.flatten(), y_angles.flatten()], axis=1
+                )
                 i = np.random.choice(len(angles))
                 basis = get_change_of_basis(motion, angles[i])
                 motion = preprocess_mixamo(motion)
@@ -193,14 +215,15 @@ def gen_meanpose(phase, config, n_samp=20000):
 
 
 class MixamoDataset(_MixamoDatasetBase):
-
     def __init__(self, phase, config):
         super(MixamoDataset, self).__init__(phase, config)
         x_angles = view_angles if config.rotation_axes[0] else np.array([0])
         z_angles = view_angles if config.rotation_axes[1] else np.array([0])
         y_angles = view_angles if config.rotation_axes[2] else np.array([0])
         x_angles, z_angles, y_angles = np.meshgrid(x_angles, z_angles, y_angles)
-        angles = np.stack([x_angles.flatten(), z_angles.flatten(), y_angles.flatten()], axis=1)
+        angles = np.stack(
+            [x_angles.flatten(), z_angles.flatten(), y_angles.flatten()], axis=1
+        )
         self.view_angles = angles
 
     def preprocessing(self, motion3d, view_angle=None, params=None):
@@ -209,10 +232,12 @@ class MixamoDataset(_MixamoDatasetBase):
         :return:
         """
 
-        if self.aug: motion3d, params = self.augmentation(motion3d, params)
+        if self.aug:
+            motion3d, params = self.augmentation(motion3d, params)
 
         basis = None
-        if view_angle is not None: basis = get_change_of_basis(motion3d, view_angle)
+        if view_angle is not None:
+            basis = get_change_of_basis(motion3d, view_angle)
 
         motion3d = preprocess_mixamo(motion3d)
         motion3d = rotate_motion_3d(motion3d, basis)
@@ -234,7 +259,9 @@ class MixamoDataset(_MixamoDatasetBase):
         idx_a, idx_b = np.random.choice(len(self.motion_names), size=2, replace=False)
         mot_a, mot_b = self.motion_names[idx_a], self.motion_names[idx_b]
         # select two characters
-        idx_a, idx_b = np.random.choice(len(self.character_names), size=2, replace=False)
+        idx_a, idx_b = np.random.choice(
+            len(self.character_names), size=2, replace=False
+        )
         char_a, char_b = self.character_names[idx_a], self.character_names[idx_b]
         idx_a, idx_b = np.random.choice(len(self.view_angles), size=2, replace=False)
         view_a, view_b = self.view_angles[idx_a], self.view_angles[idx_b]
@@ -260,21 +287,33 @@ class MixamoDataset(_MixamoDatasetBase):
         X_abb, x_abb = self.preprocessing(item_ab, view_b, param_b)
         X_baa, x_baa = self.preprocessing(item_ba, view_a, param_a)
 
-        return {"X_a": X_a, "X_b": X_b,
-                "X_aab": X_aab, "X_bba": X_bba,
-                "X_aba": X_aba, "X_bab": X_bab,
-                "X_abb": X_abb, "X_baa": X_baa,
-                "x_a": x_a, "x_b": x_b,
-                "x_aab": x_aab, "x_bba": x_bba,
-                "x_aba": x_aba, "x_bab": x_bab,
-                "x_abb": x_abb, "x_baa": x_baa,
-                "mot_a": mot_a, "mot_b": mot_b,
-                "char_a": char_a, "char_b": char_b,
-                "view_a": view_a, "view_b": view_b}
+        return {
+            "X_a": X_a,
+            "X_b": X_b,
+            "X_aab": X_aab,
+            "X_bba": X_bba,
+            "X_aba": X_aba,
+            "X_bab": X_bab,
+            "X_abb": X_abb,
+            "X_baa": X_baa,
+            "x_a": x_a,
+            "x_b": x_b,
+            "x_aab": x_aab,
+            "x_bba": x_bba,
+            "x_aba": x_aba,
+            "x_bab": x_bab,
+            "x_abb": x_abb,
+            "x_baa": x_baa,
+            "mot_a": mot_a,
+            "mot_b": mot_b,
+            "char_a": char_a,
+            "char_b": char_b,
+            "view_a": view_a,
+            "view_b": view_b,
+        }
 
 
 class MixamoLimbScaleDataset(_MixamoDatasetBase):
-
     def __init__(self, phase, config):
         super(MixamoLimbScaleDataset, self).__init__(phase, config)
         self.global_range = config.global_range
@@ -284,19 +323,25 @@ class MixamoLimbScaleDataset(_MixamoDatasetBase):
         z_angles = view_angles if config.rotation_axes[1] else np.array([0])
         y_angles = view_angles if config.rotation_axes[2] else np.array([0])
         x_angles, z_angles, y_angles = np.meshgrid(x_angles, z_angles, y_angles)
-        angles = np.stack([x_angles.flatten(), z_angles.flatten(), y_angles.flatten()], axis=1)
+        angles = np.stack(
+            [x_angles.flatten(), z_angles.flatten(), y_angles.flatten()], axis=1
+        )
         self.view_angles = angles
 
     def preprocessing(self, motion3d, view_angle=None, params=None):
-        if self.aug: motion3d, params = self.augmentation(motion3d, params)
+        if self.aug:
+            motion3d, params = self.augmentation(motion3d, params)
 
         basis = None
-        if view_angle is not None: basis = get_change_of_basis(motion3d, view_angle)
+        if view_angle is not None:
+            basis = get_change_of_basis(motion3d, view_angle)
 
         motion3d = preprocess_mixamo(motion3d)
         motion3d = rotate_motion_3d(motion3d, basis)
         motion2d = motion3d[:, [0, 2], :]
-        motion2d_scale = limb_scale_motion_2d(motion2d, self.global_range, self.local_range)
+        motion2d_scale = limb_scale_motion_2d(
+            motion2d, self.global_range, self.local_range
+        )
 
         motion2d = localize_motion(motion2d)
         motion2d_scale = localize_motion(motion2d_scale)
@@ -331,4 +376,3 @@ class MixamoLimbScaleDataset(_MixamoDatasetBase):
         x, x_s = self.preprocessing(self.load_item(item), view, param)
 
         return {"x": x, "x_s": x_s, "mot": motion, "char": character, "view": view}
-

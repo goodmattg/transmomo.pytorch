@@ -2,18 +2,21 @@
 # For testing, we random rotate each motion around the vertical axis
 
 import sys, os
+
 sys.path.insert(0, os.getcwd())
 import numpy as np
 import argparse
-from lib.util.motion import rotate_basis
+from transmomo.lib.util.motion import rotate_basis
 
 np.random.seed(123)
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_dir', type=str, default="data/mixamo/36_800_24/test")
-    parser.add_argument('--out_dir', type=str, default="data/mixamo/36_800_24/test_random_rotate")
+    parser.add_argument("--data_dir", type=str, default="data/mixamo/36_800_24/test")
+    parser.add_argument(
+        "--out_dir", type=str, default="data/mixamo/36_800_24/test_random_rotate"
+    )
     args = parser.parse_args()
 
     chars = os.listdir(args.data_dir)
@@ -26,7 +29,7 @@ if __name__ == "__main__":
 
     for mot in mots:
 
-        angles = np.array([0., 0., 2 * np.pi * np.random.random()])
+        angles = np.array([0.0, 0.0, 2 * np.pi * np.random.random()])
 
         for char in chars:
 
@@ -46,4 +49,3 @@ if __name__ == "__main__":
             print("computed {} seqs".format(cnt), end="\r")
 
     print("finished" + " " * 20)
-

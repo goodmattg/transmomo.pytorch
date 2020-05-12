@@ -1,11 +1,13 @@
 import sys, os
+
 sys.path.insert(0, os.getcwd())
 import json
 import argparse
 import numpy as np
 from itertools import combinations
-from lib.util.motion import rotate_basis, preprocess_mixamo
+from transmomo.lib.util.motion import rotate_basis, preprocess_mixamo
 import imageio
+
 
 def load_and_preprocess(path):
 
@@ -24,12 +26,14 @@ def load_and_preprocess(path):
 
     return motion_proj
 
+
 def rotate_3d(motion3d, angles):
 
     local3d = rotate_basis(np.eye(3), angles)
     motion3d = local3d @ motion3d
 
     return motion3d
+
 
 def relocate(motion, fix_hip):
 
@@ -43,16 +47,31 @@ def relocate(motion, fix_hip):
 
     return motion
 
+
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--description', type=str, default="data/mixamo/36_800_24/mse_description.json")
-    parser.add_argument('--data_dir', type=str, default="data/mixamo/36_800_24/test_random_rotate",
-                        help="path to the directory storing test data")
-    parser.add_argument('--in_dir', type=str, required=True,
-                        help="path to the directory storing the inferred data")
-    parser.add_argument('--fix_hip', type=bool, default=True,
-                        help="whether or not to fix hip joint position")
+    parser.add_argument(
+        "--description", type=str, default="data/mixamo/36_800_24/mse_description.json"
+    )
+    parser.add_argument(
+        "--data_dir",
+        type=str,
+        default="data/mixamo/36_800_24/test_random_rotate",
+        help="path to the directory storing test data",
+    )
+    parser.add_argument(
+        "--in_dir",
+        type=str,
+        required=True,
+        help="path to the directory storing the inferred data",
+    )
+    parser.add_argument(
+        "--fix_hip",
+        type=bool,
+        default=True,
+        help="whether or not to fix hip joint position",
+    )
     args = parser.parse_args()
 
     description = json.load(open(args.description))
@@ -71,11 +90,21 @@ def main():
         for i, mot1 in enumerate(motions1):
             for j, mot2 in enumerate(motions2):
 
-                gt_path_ab = os.path.join(args.data_dir, char2, mot1, "{}.npy".format(mot1))
-                gt_path_ba = os.path.join(args.data_dir, char1, mot2, "{}.npy".format(mot2))
+                gt_path_ab = os.path.join(
+                    args.data_dir, char2, mot1, "{}.npy".format(mot1)
+                )
+                gt_path_ba = os.path.join(
+                    args.data_dir, char1, mot2, "{}.npy".format(mot2)
+                )
 
-                path_ab = os.path.join(args.in_dir, "motion_{}_{}_body_{}_{}.npy".format(char1, i, char2, j))
-                path_ba = os.path.join(args.in_dir, "motion_{}_{}_body_{}_{}.npy".format(char2, j, char1, i))
+                path_ab = os.path.join(
+                    args.in_dir,
+                    "motion_{}_{}_body_{}_{}.npy".format(char1, i, char2, j),
+                )
+                path_ba = os.path.join(
+                    args.in_dir,
+                    "motion_{}_{}_body_{}_{}.npy".format(char2, j, char1, i),
+                )
 
                 gt_ab = load_and_preprocess(gt_path_ab)
                 gt_ba = load_and_preprocess(gt_path_ba)
@@ -103,16 +132,15 @@ def main():
     mse = sum_squared_error / n_nums
     mae = sum_absolute_error / n_nums
 
-    out_str = "{} MSE {} = {}\n".format(args.in_dir, "(fix_hip)" if args.fix_hip else "", mse)
-    out_str += "{} MAE {} = {}\n".format(args.in_dir, "(fix_hip)" if args.fix_hip else "", mae)
+    out_str = "{} MSE {} = {}\n".format(
+        args.in_dir, "(fix_hip)" if args.fix_hip else "", mse
+    )
+    out_str += "{} MAE {} = {}\n".format(
+        args.in_dir, "(fix_hip)" if args.fix_hip else "", mae
+    )
 
     print(out_str)
 
+
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
