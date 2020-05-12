@@ -4,14 +4,15 @@ import numpy as np
 import imageio
 from math import pi
 from tqdm import tqdm
-from lib.data import get_dataloader, get_meanpose
-from lib.util.general import get_config
-from lib.util.visualization import motion2video_np, hex2rgb
+from transmomo.lib.data import get_dataloader, get_meanpose
+from transmomo.lib.util.general import get_config
+from transmomo.lib.util.visualization import motion2video_np, hex2rgb
 import os
 
 eps = 1e-16
 
 # tensor operations for rotating and projecting 3d skeleton sequence
+
 
 def get_body_basis(motion_3d):
     """
@@ -23,12 +24,18 @@ def get_body_basis(motion_3d):
     B = motion_3d.size(0)
 
     # 2 RightArm 5 LeftArm 9 RightUpLeg 12 LeftUpLeg
-    horizontal = (motion_3d[:, 2] - motion_3d[:, 5] + motion_3d[:, 9] - motion_3d[:, 12]) / 2 # [B, 3, seq_len]
-    horizontal = horizontal.mean(dim=-1) # [B, 3]
-    horizontal = horizontal / horizontal.norm(dim=-1).unsqueeze(-1) # [B, 3]
+    horizontal = (
+        motion_3d[:, 2] - motion_3d[:, 5] + motion_3d[:, 9] - motion_3d[:, 12]
+    ) / 2  # [B, 3, seq_len]
+    horizontal = horizontal.mean(dim=-1)  # [B, 3]
+    horizontal = horizontal / horizontal.norm(dim=-1).unsqueeze(-1)  # [B, 3]
 
-    vector_z = torch.tensor([0., 0., 1.], device=motion_3d.device, dtype=motion_3d.dtype).unsqueeze(0).repeat(B, 1) # [B, 3]
-    vector_y = torch.cross(horizontal, vector_z)   # [B, 3]
+    vector_z = (
+        torch.tensor([0.0, 0.0, 1.0], device=motion_3d.device, dtype=motion_3d.dtype)
+        .unsqueeze(0)
+        .repeat(B, 1)
+    )  # [B, 3]
+    vector_y = torch.cross(horizontal, vector_z)  # [B, 3]
     vector_y = vector_y / vector_y.norm(dim=-1).unsqueeze(-1)
     vector_x = torch.cross(vector_y, vector_z)
     vectors = torch.stack([vector_x, vector_y, vector_z], dim=2)  # [B, 3, 3]
@@ -59,15 +66,19 @@ def rotate_basis_euler(basis_vectors, angles):
     x_cpm_1 = torch.stack([x[:, 2], o, -x[:, 0]], dim=1)  # [B, 3]
     x_cpm_2 = torch.stack([-x[:, 1], x[:, 0], o], dim=1)  # [B, 3]
     x_cpm = torch.stack([x_cpm_0, x_cpm_1, x_cpm_2], dim=1)  # [B, 3, 3]
-    x_cpm = x_cpm.unsqueeze(1).unsqueeze(2) # [B, 1, 1, 3, 3]
+    x_cpm = x_cpm.unsqueeze(1).unsqueeze(2)  # [B, 1, 1, 3, 3]
 
     x = x.unsqueeze(-1)  # [B, 3, 1]
-    xx = torch.matmul(x, x.transpose(-1, -2)).unsqueeze(1).unsqueeze(2)  # [B, 1, 1, 3, 3]
+    xx = (
+        torch.matmul(x, x.transpose(-1, -2)).unsqueeze(1).unsqueeze(2)
+    )  # [B, 1, 1, 3, 3]
     eye = torch.eye(n=3, dtype=basis_vectors.dtype, device=basis_vectors.device)
-    eye = eye.unsqueeze(0).unsqueeze(0).unsqueeze(0) # [1, 1, 1, 3, 3]
-    mat33_x = cx.unsqueeze(-1).unsqueeze(-1) * eye \
-              + sx.unsqueeze(-1).unsqueeze(-1) * x_cpm \
-              + (1. - cx).unsqueeze(-1).unsqueeze(-1) * xx  # [B, K, T, 3, 3]
+    eye = eye.unsqueeze(0).unsqueeze(0).unsqueeze(0)  # [1, 1, 1, 3, 3]
+    mat33_x = (
+        cx.unsqueeze(-1).unsqueeze(-1) * eye
+        + sx.unsqueeze(-1).unsqueeze(-1) * x_cpm
+        + (1.0 - cx).unsqueeze(-1).unsqueeze(-1) * xx
+    )  # [B, K, T, 3, 3]
 
     o = torch.zeros_like(cz)
     i = torch.ones_like(cz)
@@ -79,7 +90,6 @@ def rotate_basis_euler(basis_vectors, angles):
     basis_vectors = basis_vectors.unsqueeze(1).unsqueeze(2)
     basis_vectors = basis_vectors @ mat33_x.transpose(-1, -2) @ mat33_z
 
-
     return basis_vectors
 
 
@@ -90,12 +100,19 @@ def change_of_basis(motion_3d, basis_vectors=None, project_2d=False):
     if basis_vectors is None:
         motion_proj = motion_3d[:, :, [0, 2], :]  # [B, n_joints, 2, seq_len]
     else:
-        if project_2d: basis_vectors = basis_vectors[:, :, :, [0, 2], :]
+        if project_2d:
+            basis_vectors = basis_vectors[:, :, :, [0, 2], :]
         _, K, seq_len, _, _ = basis_vectors.size()
         motion_3d = motion_3d.unsqueeze(1).repeat(1, K, 1, 1, 1)
-        motion_3d = motion_3d.permute([0, 1, 4, 3, 2]) # [B, K, J, 3, T] -> [B, K, T, 3, J]
-        motion_proj = basis_vectors @ motion_3d  # [B, K, T, 2, 3] @ [B, K, T, 3, J] -> [B, K, T, 2, J]
-        motion_proj = motion_proj.permute([0, 1, 4, 3, 2]) # [B, K, T, 3, J] -> [B, K, J, 3, T]
+        motion_3d = motion_3d.permute(
+            [0, 1, 4, 3, 2]
+        )  # [B, K, J, 3, T] -> [B, K, T, 3, J]
+        motion_proj = (
+            basis_vectors @ motion_3d
+        )  # [B, K, T, 2, 3] @ [B, K, T, 3, J] -> [B, K, T, 2, J]
+        motion_proj = motion_proj.permute(
+            [0, 1, 4, 3, 2]
+        )  # [B, K, T, 3, J] -> [B, K, J, 3, T]
 
     return motion_proj
 
@@ -109,8 +126,11 @@ def rotate_and_maybe_project(X, angles=None, body_reference=True, project_2d=Fal
 
     if angles is not None:
         K = angles.size(1)
-        basis_vectors = get_body_basis(X) if body_reference else \
-            torch.eye(3, device=X.device).unsqueeze(0).repeat(batch_size, 1, 1)
+        basis_vectors = (
+            get_body_basis(X)
+            if body_reference
+            else torch.eye(3, device=X.device).unsqueeze(0).repeat(batch_size, 1, 1)
+        )
         basis_vectors = rotate_basis_euler(basis_vectors, angles)
         X_trans = change_of_basis(X, basis_vectors, project_2d=project_2d)
         X_trans = X_trans.reshape(batch_size * K, n_joints * D, seq_len)
@@ -119,7 +139,3 @@ def rotate_and_maybe_project(X, angles=None, body_reference=True, project_2d=Fal
         X_trans = X_trans.reshape(batch_size, n_joints * D, seq_len)
 
     return X_trans
-
-
-
-

@@ -6,17 +6,19 @@ import torch
 import torch.backends.cudnn as cudnn
 from tqdm import tqdm
 from scipy.ndimage import gaussian_filter1d
-from lib.data import get_dataloader, get_meanpose
-from lib.util.general import get_config
-from lib.network import get_autoencoder
-from lib.operation import change_of_basis
-from lib.util.motion import preprocess_test, postprocess
-from lib.util.general import pad_to_height, ensure_dir
-from lib.util.visualization import motion2video, motion2video_np, hex2rgb
+from transmomo.lib.data import get_dataloader, get_meanpose
+from transmomo.lib.util.general import get_config
+from transmomo.lib.network import get_autoencoder
+from transmomo.lib.operation import change_of_basis
+from transmomo.lib.util.motion import preprocess_test, postprocess
+from transmomo.lib.util.general import pad_to_height, ensure_dir
+from transmomo.lib.util.visualization import motion2video, motion2video_np, hex2rgb
+
 try:
     from itertools import izip as zip
-except ImportError: # will be 3.x series
+except ImportError:  # will be 3.x series
     pass
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -24,17 +26,28 @@ def parse_args():
     parser.add_argument("--source", type=str, required=True, help="source npy path")
     parser.add_argument("--target", type=str, required=True, help="target npy path")
 
-    parser.add_argument("-c", "--config", type=str, default="configs/transmomo.yaml", help="Path to the config file.")
-    parser.add_argument("-cp", "--checkpoint", type=str, help="path to autoencoder checkpoint")
-    parser.add_argument("-o", "--out_dir", type=str, default="out", help="output directory")
+    parser.add_argument(
+        "-c",
+        "--config",
+        type=str,
+        default="configs/transmomo.yaml",
+        help="Path to the config file.",
+    )
+    parser.add_argument(
+        "-cp", "--checkpoint", type=str, help="path to autoencoder checkpoint"
+    )
+    parser.add_argument(
+        "-o", "--out_dir", type=str, default="out", help="output directory"
+    )
 
-    parser.add_argument('--source_height', type=int, help="source video height")
-    parser.add_argument('--source_width', type=int, help="source video width")
-    parser.add_argument('--target_height', type=int, help="target video height")
-    parser.add_argument('--target_width', type=int, help="target video width")
+    parser.add_argument("--source_height", type=int, help="source video height")
+    parser.add_argument("--source_width", type=int, help="source video width")
+    parser.add_argument("--target_height", type=int, help="target video height")
+    parser.add_argument("--target_width", type=int, help="target video width")
 
-    parser.add_argument('--max_length', type=int, default=120,
-                        help='maximum input video length')
+    parser.add_argument(
+        "--max_length", type=int, default=120, help="maximum input video length"
+    )
 
     args = parser.parse_args()
     return args
@@ -76,7 +89,9 @@ def main(config, args):
     x_cross = ae.cross2d(x_src, x_tgt, x_src)
     x_cross = postprocess(x_cross, mean_pose, std_pose, unit=1.0, start=x_src_start)
 
-    out_path = os.path.join(args.out_dir, 'retarget_{}_{}.npy'.format(src_name, tgt_name))
+    out_path = os.path.join(
+        args.out_dir, "retarget_{}_{}.npy".format(src_name, tgt_name)
+    )
     np.save(out_path, x_cross)
 
 

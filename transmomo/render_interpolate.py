@@ -6,17 +6,19 @@ import torch
 import torch.backends.cudnn as cudnn
 from tqdm import tqdm
 from scipy.ndimage import gaussian_filter1d
-from lib.data import get_dataloader, get_meanpose
-from lib.util.general import get_config
-from lib.network import get_autoencoder
-from lib.operation import change_of_basis
-from lib.util.motion import preprocess_test, postprocess
-from lib.util.general import pad_to_height, ensure_dir
-from lib.util.visualization import motion2video, motion2video_np, hex2rgb
+from transmomo.lib.data import get_dataloader, get_meanpose
+from transmomo.lib.util.general import get_config
+from transmomo.lib.network import get_autoencoder
+from transmomo.lib.operation import change_of_basis
+from transmomo.lib.util.motion import preprocess_test, postprocess
+from transmomo.lib.util.general import pad_to_height, ensure_dir
+from transmomo.lib.util.visualization import motion2video, motion2video_np, hex2rgb
+
 try:
     from itertools import izip as zip
-except ImportError: # will be 3.x series
+except ImportError:  # will be 3.x series
     pass
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -24,30 +26,51 @@ def parse_args():
     parser.add_argument("--source", type=str, required=True, help="source npy path")
     parser.add_argument("--target", type=str, required=True, help="target npy path")
 
-    parser.add_argument("-c", "--config", type=str, default="configs/transmomo.yaml", help="Path to the config file.")
-    parser.add_argument("-cp", "--checkpoint", type=str, help="path to autoencoder checkpoint")
+    parser.add_argument(
+        "-c",
+        "--config",
+        type=str,
+        default="configs/transmomo.yaml",
+        help="Path to the config file.",
+    )
+    parser.add_argument(
+        "-cp", "--checkpoint", type=str, help="path to autoencoder checkpoint"
+    )
     parser.add_argument("-o", "--out_dir", type=str, default="out", help="outputs path")
 
-    parser.add_argument('--n_interp', type=int, default=4, help='number of interpolations')
+    parser.add_argument(
+        "--n_interp", type=int, default=4, help="number of interpolations"
+    )
 
-    parser.add_argument('--source_height', type=int, help="source height")
-    parser.add_argument('--source_width', type=int, help="source width")
-    parser.add_argument('--target_height', type=int, help="target height")
-    parser.add_argument('--target_width', type=int, help="target width")
-    parser.add_argument('--out_height', type=int, help="height", default=512)
-    parser.add_argument('--out_width', type=int, help="width", default=512)
+    parser.add_argument("--source_height", type=int, help="source height")
+    parser.add_argument("--source_width", type=int, help="source width")
+    parser.add_argument("--target_height", type=int, help="target height")
+    parser.add_argument("--target_width", type=int, help="target width")
+    parser.add_argument("--out_height", type=int, help="height", default=512)
+    parser.add_argument("--out_width", type=int, help="width", default=512)
 
-    parser.add_argument('--color1', type=str, default='#a50b69#b73b87#db9dc3', help='color1')
-    parser.add_argument('--color2', type=str, default='#4076e0#40a7e0#40d7e0', help='color2')
+    parser.add_argument(
+        "--color1", type=str, default="#a50b69#b73b87#db9dc3", help="color1"
+    )
+    parser.add_argument(
+        "--color2", type=str, default="#4076e0#40a7e0#40d7e0", help="color2"
+    )
 
-    parser.add_argument('--fps', type=float, default=25, help="fps of output video")
-    parser.add_argument('--disable_smooth', action='store_true',
-                        help="disable gaussian kernel smoothing")
-    parser.add_argument('--transparency', action='store_true',
-                        help="make background transparent in resulting frames")
+    parser.add_argument("--fps", type=float, default=25, help="fps of output video")
+    parser.add_argument(
+        "--disable_smooth",
+        action="store_true",
+        help="disable gaussian kernel smoothing",
+    )
+    parser.add_argument(
+        "--transparency",
+        action="store_true",
+        help="make background transparent in resulting frames",
+    )
 
-    parser.add_argument('--max_length', type=int, default=120,
-                        help='maximum input video length')
+    parser.add_argument(
+        "--max_length", type=int, default=120, help="maximum input video length"
+    )
 
     args = parser.parse_args()
     return args
@@ -76,7 +99,7 @@ def main(config, args):
     mean_pose, std_pose = get_meanpose("test", config.data)
 
     n = args.n_interp
-    step_size = 1. / (n-1)
+    step_size = 1.0 / (n - 1)
 
     x_src = np.load(args.source)
     x_tgt = np.load(args.target)
@@ -95,23 +118,31 @@ def main(config, args):
     x_interp = ae.interpolate(x_src, x_tgt, n)
 
     vid_array = np.zeros([length, n * h, n * w, 3], dtype=np.uint8)
-    pbar = tqdm(total=n*n)
+    pbar = tqdm(total=n * n)
     pbar.set_description("rendering")
 
     for i in range(n):
         for j in range(n):
 
-            motion = postprocess(x_interp[:, i, j], mean_pose, std_pose, unit=1.0, start=np.array([args.out_width // 2, args.out_height // 2]))
+            motion = postprocess(
+                x_interp[:, i, j],
+                mean_pose,
+                std_pose,
+                unit=1.0,
+                start=np.array([args.out_width // 2, args.out_height // 2]),
+            )
             if not args.disable_smooth:
                 motion = gaussian_filter1d(motion, sigma=2, axis=-1)
 
             color_weight = j * step_size
-            color = (1. - color_weight) * color1 + color_weight * color2
-            vid = motion2video_np(motion, h, w, color, transparency=False, show_progress=False)
-            vid_array[:, i * h: (i + 1) * h, j * w: (j + 1) * w, :] = vid
+            color = (1.0 - color_weight) * color1 + color_weight * color2
+            vid = motion2video_np(
+                motion, h, w, color, transparency=False, show_progress=False
+            )
+            vid_array[:, i * h : (i + 1) * h, j * w : (j + 1) * w, :] = vid
             pbar.update(1)
 
-    out_path = os.path.join(args.out_dir, 'interp_{}_{}.mp4'.format(src_name, tgt_name))
+    out_path = os.path.join(args.out_dir, "interp_{}_{}.mp4".format(src_name, tgt_name))
     videowriter = imageio.get_writer(out_path, fps=args.fps)
     for i in range(length):
         videowriter.append_data(vid_array[i])
