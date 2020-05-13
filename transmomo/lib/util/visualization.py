@@ -150,7 +150,7 @@ def joints2image(
         canvas,
         (int(joints_position[0][0]), int(joints_position[0][1])),
         head_radius,
-        colors_joints[0],
+        tuple([int(x) for x in colors_joints[0]]),
         thickness=-1,
     )
 
@@ -165,7 +165,7 @@ def joints2image(
             canvas,
             (int(joints_position[i][0]), int(joints_position[i][1])),
             radius,
-            colors_joints[i],
+            tuple([int(x) for x in colors_joints[i]]),
             thickness=-1,
         )
 
@@ -190,7 +190,9 @@ def joints2image(
         polygon = cv2.ellipse2Poly(
             (int(mY), int(mX)), (int(length / 2), stickwidth), int(alpha), 0, 360, 1
         )
-        cv2.fillConvexPoly(cur_canvas, polygon, colors_limbs[i])
+        cv2.fillConvexPoly(
+            cur_canvas, polygon, tuple([int(x) for x in colors_limbs[i]])
+        )
         canvas = cv2.addWeighted(canvas, 0.4, cur_canvas, 0.6, 0)
         bb = bounding_box(canvas)
         canvas_cropped = canvas[:, bb[2] : bb[3], :]
