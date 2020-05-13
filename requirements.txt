@@ -2,6 +2,7 @@ easydict
 imageio-ffmpeg
 matplotlib
 numpy
+opencv-python>=3.4.2.16
 Pillow
 protobuf
 PyYAML
